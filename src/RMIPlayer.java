@@ -2,7 +2,6 @@ import javax.swing.*;
 import java.awt.event.*;
 import java.rmi.Naming;
 import java.rmi.RemoteException;
-import java.rmi.server.UnicastRemoteObject;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
@@ -122,7 +121,7 @@ public class RMIPlayer {
 
             this.playerID = serverInterface.getPlayerID();
 
-            playerConnection = new RMIPlayerConnection();
+            playerConnection = new RMIPlayerConnection(this);
 
             String playerURL = "//localhost/Player" + playerID + "Ref";
             Naming.rebind(playerURL, playerConnection);
@@ -425,6 +424,66 @@ public class RMIPlayer {
         }
     }
 
+    public void updatePlayerTurn(int bNum) throws RemoteException {
+        if (turnsMade <= 9 || (!isMyTurn && !madeAMill)) {
+            if (bNum != -1) {
+                gameView.appendMessage("\n Player#" + otherPlayer + " clicked on point #" + bNum
+                        + ". It's your turn.");
+                gameView.updateChatPosition();
+
+                if (enemyPieces < 9) {
+                    enemyPoints[enemyPieces] = bNum;
+                    enemyPieces++;
+                }
+            }
+
+            if (turnsMade <= 9) {
+                for (int i = 0; i < myPoints.length; i++) {
+                    if (myPoints[i] != null) {
+                        allPoints[myPoints[i]] = 1;
+                    }
+                    if (enemyPoints[i] != null) {
+                        allPoints[enemyPoints[i]] = 2;
+                    }
+                }
+            }
+
+            buttonsEnabled = true;
+            if (turnsMade >= 9 && enemyPieces <= 9) {
+                toggleButtonsAfterPiecesPlaced();
+            } else {
+                toggleButtons();
+            }
+
+            if (!winner) {
+                checkWinner();
+            }
+        }
+    }
+
+    public void updatePlayerPoints(Integer[] myUpdatedPoints, Integer[] enemyUpdatedPoints){
+        myPoints = myUpdatedPoints;
+        enemyPoints = enemyUpdatedPoints;
+
+        updateAllPointsArray();
+
+        buttonsEnabled = true;
+
+        if (turnsMade >= 9 && enemyPieces <= 9) {
+            toggleButtonsAfterPiecesPlaced();
+        } else {
+            toggleButtons();
+        }
+
+        if (!winner) {
+            checkWinner();
+        }
+    }
+
+    public int getPlayerID() {
+        return playerID;
+    }
+
     // CHAT
     public void sendChatMessage() {
         String message = gameView.getChatTextFieldText();
@@ -472,124 +531,50 @@ public class RMIPlayer {
 
         gameView.updateChatPosition();
     }
+    public void receivePlayerMessage(String message){
+        if (!message.equalsIgnoreCase("@exit@")) {
 
-
-    private class RMIPlayerConnection extends UnicastRemoteObject implements PlayerInterface {
-        private static final long serialVersionUID = 1L;
-
-        public RMIPlayerConnection() throws RemoteException {
-            super();
-
-            System.out.println("----Client----");
-            System.out.println("Connected to server as Player #" + playerID + ".");
-        }
-
-        @Override
-        public void updateTurn(int bNum) throws RemoteException {
-            if (turnsMade <= 9 || (!isMyTurn && !madeAMill)) {
-                if (bNum != -1) {
-                    gameView.appendMessage("\n Player#" + otherPlayer + " clicked on point #" + bNum
-                            + ". It's your turn.");
-                    gameView.updateChatPosition();
-
-                    if (enemyPieces < 9) {
-                        enemyPoints[enemyPieces] = bNum;
-                        enemyPieces++;
-                    }
-                }
-
-                if (turnsMade <= 9) {
-                    for (int i = 0; i < myPoints.length; i++) {
-                        if (myPoints[i] != null) {
-                            allPoints[myPoints[i]] = 1;
-                        }
-                        if (enemyPoints[i] != null) {
-                            allPoints[enemyPoints[i]] = 2;
-                        }
-                    }
-                }
-
-                buttonsEnabled = true;
-                if (turnsMade >= 9 && enemyPieces <= 9) {
-                    toggleButtonsAfterPiecesPlaced();
-                } else {
-                    toggleButtons();
-                }
-
-                if (!winner) {
-                    checkWinner();
-                }
+            if (!message.equalsIgnoreCase("@win@")) {
+                gameView.appendMessage("\nPlayer #" + otherPlayer + ": " + message);
             }
-        }
 
+            if (message.equalsIgnoreCase("@win@") && !winner) {
+                gameView.appendMessage("\n----- Player #" + otherPlayer + " WINS! -----");
 
-        @Override
-        public void updateAllPoints(Integer[] myUpdatedPoints, Integer[] enemyUpdatedPoints) throws RemoteException {
-            myPoints = myUpdatedPoints;
-            enemyPoints = enemyUpdatedPoints;
-
-            updateAllPointsArray();
-
-            buttonsEnabled = true;
-
-            if (turnsMade >= 9 && enemyPieces <= 9) {
-                toggleButtonsAfterPiecesPlaced();
-            } else {
+                buttonsEnabled = false;
                 toggleButtons();
+
+                winner = true;
             }
 
-            if (!winner) {
-                checkWinner();
+            if (message.equalsIgnoreCase("!surrender") && !winner) {
+                gameView.appendMessage("\n----- YOU WIN! Player #" + otherPlayer + " surrendered. -----");
+
+                buttonsEnabled = false;
+                toggleButtons();
+
+                winner = true;
             }
-        }
 
-        //CHAT
-        @Override
-        public void receiveMessage(String message) throws RemoteException {
-
-            if (!message.equalsIgnoreCase("@exit@")) {
-
-                if (!message.equalsIgnoreCase("@win@")) {
-                    gameView.appendMessage("\nPlayer #" + otherPlayer + ": " + message);
-                }
-
-                if (message.equalsIgnoreCase("@win@") && !winner) {
-                    gameView.appendMessage("\n----- Player #" + otherPlayer + " WINS! -----");
+            if (message.equalsIgnoreCase("!draw") && !winner) {
+                if (draw) {
+                    gameView.appendMessage("\n----- GAME OVER! Both players agreed to a draw -----");
 
                     buttonsEnabled = false;
                     toggleButtons();
 
                     winner = true;
+                    draw = true;
                 }
-
-                if (message.equalsIgnoreCase("!surrender") && !winner) {
-                    gameView.appendMessage("\n----- YOU WIN! Player #" + otherPlayer + " surrendered. -----");
-
-                    buttonsEnabled = false;
-                    toggleButtons();
-
-                    winner = true;
-                }
-
-                if (message.equalsIgnoreCase("!draw") && !winner) {
-                    if (draw) {
-                        gameView.appendMessage("\n----- GAME OVER! Both players agreed to a draw -----");
-
-                        buttonsEnabled = false;
-                        toggleButtons();
-
-                        winner = true;
-                        draw = true;
-                    }
-                    else {
-                        gameView.appendMessage("\n----- Player #" + otherPlayer + " requested a draw. Send !draw to accept -----");
-                        drawCount++;
-                    }
+                else {
+                    gameView.appendMessage("\n----- Player #" + otherPlayer + " requested a draw. Send !draw to accept -----");
+                    drawCount++;
                 }
             }
-            gameView.updateChatPosition();
         }
+        gameView.updateChatPosition();
     }
+    
 
     public static void main(String[] args) {
         new RMIPlayer();
